@@ -1,16 +1,14 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/user');
+const pool = require('../dbconn');
 const NotFoundError = require('../errors/NotFoundError');
 const BadRequestError = require('../errors/BadRequestError');
 const UnauthorizedError = require('../errors/UnauthorizedError');
 const ConflictError = require('../errors/ConflictError');
 
-const createUser = (req, res, next) => {
+const createUser = async (req, res, next) => {
   const {
-    name = undefined,
-    about = undefined,
-    avatar = undefined,
     email,
     password,
   } = req.body;
@@ -21,29 +19,40 @@ const createUser = (req, res, next) => {
   bcrypt
     .hash(password, 10)
     .then((hash) => {
-      const user = () => User.create(
-        {
-          name, about, avatar, email, password: hash,
-        },
-      );
+      const user = () => pool.getConnection()
+        .then((conn) => {
+          const response = conn.query(
+            'INSERT INTO users (email, password) VALUES(?, ?)',
+            [email, hash],
+          );
+          conn.release();
+          return response;
+        })
+        .then((result) => result[0].insertId);
       return user();
     })
-    .then((user) => {
-      res.send({
-        name: user.name,
-        about: user.about,
-        avatar: user.avatar,
-        email: user.email,
-        id: user._id,
-      });
+    .then((userId) => {
+      pool.getConnection()
+        .then((conn) => {
+          const user = conn.query(
+            'SELECT * FROM users WHERE id = ?',
+            [userId],
+          );
+          conn.release();
+          return user;
+        })
+        .then((result) => {
+          res.json({
+            name: result[0][0].name,
+            email: result[0][0].email,
+            about: result[0][0].about,
+            avatar: result[0][0].avatar,
+            id: result[0][0].id,
+          });
+        });
     })
     .catch((err) => {
-      console.log(err.name);
-      console.log(err.code);
-      if (err.name === 'ValidationError') {
-        throw new BadRequestError('Переданы некорректные данные при создании пользователя');
-      }
-      if (err.code === 11000) {
+      if (err.code === 'ER_DUP_ENTRY') {
         throw new ConflictError('Переданы некорректные данные при создании пользователя');
       } else {
         next(err);
