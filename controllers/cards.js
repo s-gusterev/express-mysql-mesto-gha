@@ -1,4 +1,5 @@
 const Card = require('../models/card');
+const pool = require('../dbconn');
 const NotFoundError = require('../errors/NotFoundError');
 const BadRequestError = require('../errors/BadRequestError');
 const ForbiddenError = require('../errors/ForbiddenError');
@@ -6,17 +7,67 @@ const ForbiddenError = require('../errors/ForbiddenError');
 const createCard = (req, res, next) => {
   const { name, link } = req.body;
 
-  Card.create({ name, link, owner: req.user._id })
-    .then((card) => { res.send({ data: card }); })
+  pool.getConnection()
+    .then((conn) => {
+      const response = conn.query(
+        'INSERT INTO cards (name, link, owner) VALUES(?, ?, ?)',
+        [name, link, req.user.userId],
+      );
+      conn.release();
+      return response;
+    })
+    .then((result) => result[0].insertId)
+    .then((insertId) => {
+      pool.getConnection()
+        .then((conn) => {
+          const card = conn.query(
+            // eslint-disable-next-line quotes
+            `SELECT cards.*,
+             users.name AS user_name,
+             users.avatar AS user_avatar,
+             users.about AS user_about
+             FROM cards JOIN users ON cards.owner = users.id WHERE cards.id = ?;`,
+            [insertId],
+          );
+          conn.release();
+          return card;
+        })
+        .then((card) => {
+          res.json({
+            id: card[0][0].id,
+            name: card[0][0].name,
+            link: card[0][0].link,
+            createdAt: card[0][0].createdAt,
+            owner: [{
+              id: card[0][0].owner,
+              name: card[0][0].user_name,
+              avatar: card[0][0].user_avatar,
+              about: card[0][0].user_about,
+            }],
+          });
+        });
+    })
     .catch((err) => {
-      if (err.name === 'ValidationError') {
-        throw new BadRequestError('Переданы некорректные данные при создании карточки');
-      } else {
-        next(err);
-      }
+      console.log(err);
+      next(err);
     })
     .catch(next);
 };
+
+// const createCard = (req, res, next) => {
+//   const { name, link } = req.body;
+
+//   Card.create({ name, link, owner: req.user._id })
+//     .then((card) => { res.send({ data: card }); })
+//     .catch((err) => {
+//       if (err.name === 'ValidationError') {
+//         throw new BadRequestError('Переданы некорректные данные при создании карточки');
+//       } else {
+//         next(err);
+//       }
+//     })
+//     .catch(next);
+// };
 
 const getCard = (req, res, next) => {
   Card.find({})
