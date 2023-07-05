@@ -67,14 +67,37 @@ const login = (req, res, next) => {
   if (!email || !password) {
     throw new BadRequestError('Незаполнены поля email или пароль');
   }
-
-  return User.findUserByCredentials(email, password)
-    .then((user) => {
-      const token = jwt.sign({ _id: user._id }, 'secret-token-mesto', { expiresIn: '7d' });
-      res.send({ token });
+  pool.getConnection()
+    .then((conn) => {
+      const user = conn.query(
+        'SELECT * FROM users WHERE email = ?',
+        [email],
+      );
+      conn.release();
+      return user;
     })
-    .catch(() => {
-      throw new UnauthorizedError('Неправильные email или пароль');
+    .then((user) => {
+      if (!user[0].length) {
+        throw new UnauthorizedError('Неправильные email или пароль');
+      }
+
+      const userId = user[0][0].id;
+      const token = jwt.sign({ userId }, 'secret-token-mesto', { expiresIn: '24hr' });
+
+      bcrypt.compare(password, user[0][0].password)
+        .then((passwordVerified) => passwordVerified)
+        .then((isPasswordCorrect) => {
+          if (isPasswordCorrect) {
+            res.json({
+              token,
+            });
+          } else {
+            throw new UnauthorizedError('Неправильные email или пароль');
+          }
+        })
+        .catch((error) => {
+          next(error);
+        });
     })
     .catch(next);
 };
