@@ -103,33 +103,80 @@ const login = (req, res, next) => {
 };
 
 const getUser = (req, res, next) => {
-  User.find({})
-    .then((user) => { res.send({ data: user }); })
+  pool.getConnection()
+    .then((conn) => {
+      const users = conn.query(
+        'SELECT * FROM users',
+      );
+      conn.release();
+      return users;
+    })
+    .then((users) => {
+      const allUsers = users[0].map((user) => (
+        {
+          id: user.id,
+          name: user.name,
+          about: user.about,
+          avatar: user.avatar,
+          email: user.email,
+        }
+      ));
+      res.json(allUsers);
+    })
     .catch((err) => { next(err); });
 };
 
 const getUserInfo = (req, res, next) => {
-  const userId = req.user._id;
-  User.findById(userId)
-    .then((user) => { res.send({ data: user }); })
+  const { userId } = req.user;
+  console.log(userId);
+  pool.getConnection()
+    .then((conn) => {
+      const user = conn.query(
+        'SELECT * FROM users WHERE id = ?',
+        [userId],
+      );
+      conn.release();
+      return user;
+    })
+    .then((user) => {
+      res.json({
+        id: user[0][0].id,
+        name: user[0][0].name,
+        about: user[0][0].about,
+        avatar: user[0][0].avatar,
+        email: user[0][0].email,
+      });
+    })
     .catch((err) => { next(err); });
 };
 
 const getUserId = (req, res, next) => {
-  User.findById(req.params.id)
+  console.log(req.params.id);
+  pool.getConnection()
+    .then((conn) => {
+      const user = conn.query(
+        'SELECT * FROM users WHERE id = ?',
+        [req.params.id],
+      );
+      conn.release();
+      return user;
+    })
     .then((user) => {
-      if (!user) {
+      if (!user[0].length) {
         throw new NotFoundError('Пользователь по указанному id не найден в базе данных');
       } else {
-        res.send({ data: user });
+        res.json({
+          id: user[0][0].id,
+          name: user[0][0].name,
+          about: user[0][0].about,
+          avatar: user[0][0].avatar,
+          email: user[0][0].email,
+        });
       }
     })
-    .catch((err) => {
-      if (err.name === 'CastError') {
-        console.log(err.name);
-        throw new BadRequestError('Некоректно указан id пользователя');
-      }
-      next(err);
+    .catch((error) => {
+      console.log(error);
+      next(error);
     })
     .catch(next);
 };
