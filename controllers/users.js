@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const User = require('../models/user');
+// const User = require('../models/user');
 const pool = require('../dbconn');
 const NotFoundError = require('../errors/NotFoundError');
 const BadRequestError = require('../errors/BadRequestError');
@@ -183,19 +183,44 @@ const getUserId = (req, res, next) => {
 
 const patchUserProfile = (req, res, next) => {
   const { name, about } = req.body;
-  User.findByIdAndUpdate(req.user._id, { name, about }, { new: true, runValidators: true })
-    .then((user) => {
-      if (!user) {
-        throw new NotFoundError('Пользователь по указанному id не найден в базе данных');
-      } else {
-        res.send({ data: user });
-      }
+  console.log(req.user.userId);
+  pool.getConnection()
+    .then((conn) => {
+      const updatedUser = conn.query(
+        'UPDATE users SET name = ?, about = ? WHERE id = ?;',
+        [name, about, req.user.userId],
+      );
+      conn.release();
+      return updatedUser;
+    })
+    .then(() => {
+      console.log();
+      pool.getConnection()
+        .then((conn) => {
+          const user = conn.query(
+            'SELECT * FROM users WHERE id = ?',
+            [req.user.userId],
+          );
+          conn.release();
+          return user;
+        })
+        .then((user) => {
+          res.json({
+            message: 'Профиль обновлен',
+            data:
+            {
+              id: user[0][0].id,
+              name: user[0][0].name,
+              about: user[0][0].about,
+              avatar: user[0][0].avatar,
+              email: user[0][0].email,
+            },
+          });
+        });
     })
     .catch((err) => {
-      if (err.name === 'ValidationError') {
+      if (err.code === 'ER_BAD_NULL_ERROR') {
         throw new BadRequestError('Переданы некорректные данные при обновлении профиля');
-      } else if (err.name === 'CastError') {
-        throw new BadRequestError('Не правильно указан id пользователя');
       } else {
         next(err);
       }
@@ -204,20 +229,44 @@ const patchUserProfile = (req, res, next) => {
 };
 
 const patchUserAvatar = (req, res, next) => {
-  const avatar = req.body;
-  User.findByIdAndUpdate(req.user._id, avatar, { new: true, runValidators: true })
-    .then((user) => {
-      if (!user) {
-        throw new NotFoundError('Пользователь по указанному id не найден в базе данных');
-      } else {
-        res.send({ data: user });
-      }
+  const { avatar } = req.body;
+  pool.getConnection()
+    .then((conn) => {
+      const updatedUser = conn.query(
+        'UPDATE users SET avatar = ? WHERE id = ?',
+        [avatar, req.user.userId],
+      );
+      conn.release();
+      return updatedUser;
+    })
+    .then(() => {
+      pool.getConnection()
+        .then((conn) => {
+          const user = conn.query(
+            'SELECT * FROM users WHERE id = ?',
+            [req.user.userId],
+          );
+          conn.release();
+          return user;
+        })
+        .then((user) => {
+          res.json({
+            message: 'Аватар обновлен',
+            data:
+            {
+              id: user[0][0].id,
+              name: user[0][0].name,
+              about: user[0][0].about,
+              avatar: user[0][0].avatar,
+              email: user[0][0].email,
+            },
+          });
+        });
     })
     .catch((err) => {
-      if (err.name === 'ValidationError') {
+      console.log(err);
+      if (err.code === 'ER_BAD_NULL_ERROR') {
         throw new BadRequestError('Переданы некорректные данные при обновлении профиля');
-      } else if (err.name === 'CastError') {
-        throw new BadRequestError('Не правильно указан id пользователя');
       } else {
         next(err);
       }
