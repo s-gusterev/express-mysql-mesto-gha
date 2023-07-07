@@ -38,12 +38,12 @@ const createCard = (req, res, next) => {
             name: card[0][0].name,
             link: card[0][0].link,
             createdAt: card[0][0].createdAt,
-            owner: [{
+            owner: {
               id: card[0][0].owner,
               name: card[0][0].user_name,
               avatar: card[0][0].user_avatar,
               about: card[0][0].user_about,
-            }],
+            },
           });
         });
     })
@@ -54,25 +54,44 @@ const createCard = (req, res, next) => {
     .catch(next);
 };
 
-// const createCard = (req, res, next) => {
-//   const { name, link } = req.body;
-
-//   Card.create({ name, link, owner: req.user._id })
+// const getCard = (req, res, next) => {
+//   Card.find({})
 //     .then((card) => { res.send({ data: card }); })
-//     .catch((err) => {
-//       if (err.name === 'ValidationError') {
-//         throw new BadRequestError('Переданы некорректные данные при создании карточки');
-//       } else {
-//         next(err);
-//       }
-//     })
-//     .catch(next);
+//     .catch((err) => { next(err); });
 // };
 
 const getCard = (req, res, next) => {
-  Card.find({})
-    .then((card) => { res.send({ data: card }); })
-    .catch((err) => { next(err); });
+  pool.getConnection()
+    .then((conn) => {
+      const users = conn.query(
+        // eslint-disable-next-line quotes
+        `SELECT cards.*, 
+         users.name AS user_name,
+         users.avatar AS user_avatar,
+         users.about AS user_about
+         FROM cards JOIN users ON cards.owner = users.id`,
+      );
+      conn.release();
+      return users;
+    })
+    .then((users) => {
+      const allCards = users[0].map((card) => (
+        {
+          id: card.id,
+          name: card.name,
+          createdAt: card.createdAt,
+          link: card.link,
+          owner: {
+            id: card.owner,
+            name: card.user_name,
+            avatar: card.user_avatar,
+            about: card.user_about,
+          },
+        }
+      ));
+      res.json(allCards);
+    })
+    .catch((err) => { console.log(err); next(err); });
 };
 
 const getCardId = (req, res, next) => {
