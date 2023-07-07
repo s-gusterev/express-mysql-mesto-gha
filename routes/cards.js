@@ -15,24 +15,24 @@ cardsrouter.get('/', getCard);
 
 cardsrouter.get('/:id', celebrate({
   params: Joi.object().keys({
-    id: Joi.string().hex().length(24),
+    id: Joi.string().max(11),
   }),
 }), getCardId);
 
 cardsrouter.delete('/:cardId', celebrate({
   params: Joi.object().keys({
-    cardId: Joi.string().hex().length(24),
+    cardId: Joi.string().max(11),
   }),
 }), deleteCard);
 
 cardsrouter.put('/:cardId/likes', celebrate({
   params: Joi.object().keys({
-    cardId: Joi.string().hex().length(24),
+    cardId: Joi.string().max(11),
   }),
 }), likeCard);
 cardsrouter.delete('/:cardId/likes', celebrate({
   params: Joi.object().keys({
-    cardId: Joi.string().hex().length(24),
+    cardId: Joi.string().max(11),
   }),
 }), dislikeCard);
 
