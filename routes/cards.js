@@ -25,7 +25,7 @@ cardsrouter.delete('/:cardId', celebrate({
   }),
 }), deleteCard);
 
-cardsrouter.put('/:cardId/likes', celebrate({
+cardsrouter.post('/:cardId/likes', celebrate({
   params: Joi.object().keys({
     cardId: Joi.string().max(11),
   }),

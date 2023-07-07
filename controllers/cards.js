@@ -1,8 +1,8 @@
-const Card = require('../models/card');
 const pool = require('../dbconn');
 const NotFoundError = require('../errors/NotFoundError');
 const BadRequestError = require('../errors/BadRequestError');
 const ForbiddenError = require('../errors/ForbiddenError');
+const { requestCreateCardInsert, requestCreateCardSelect } = require('../utils/mysqlRequest');
 
 const createCard = (req, res, next) => {
   const { name, link } = req.body;
@@ -10,7 +10,7 @@ const createCard = (req, res, next) => {
   pool.getConnection()
     .then((conn) => {
       const response = conn.query(
-        'INSERT INTO cards (name, link, owner) VALUES(?, ?, ?)',
+        requestCreateCardInsert,
         [name, link, req.user.userId],
       );
       conn.release();
@@ -21,12 +21,7 @@ const createCard = (req, res, next) => {
       pool.getConnection()
         .then((conn) => {
           const card = conn.query(
-            // eslint-disable-next-line quotes
-            `SELECT cards.*,
-             users.name AS user_name,
-             users.avatar AS user_avatar,
-             users.about AS user_about
-             FROM cards JOIN users ON cards.owner = users.id WHERE cards.id = ?;`,
+            requestCreateCardSelect,
             [insertId],
           );
           conn.release();
@@ -44,6 +39,7 @@ const createCard = (req, res, next) => {
               avatar: card[0][0].user_avatar,
               about: card[0][0].user_about,
             },
+            likes: [],
           });
         });
     })
@@ -54,22 +50,41 @@ const createCard = (req, res, next) => {
     .catch(next);
 };
 
-// const getCard = (req, res, next) => {
-//   Card.find({})
-//     .then((card) => { res.send({ data: card }); })
-//     .catch((err) => { next(err); });
-// };
-
 const getCard = (req, res, next) => {
   pool.getConnection()
     .then((conn) => {
       const cards = conn.query(
-        // eslint-disable-next-line quotes
-        `SELECT cards.*, 
-         users.name AS user_name,
-         users.avatar AS user_avatar,
-         users.about AS user_about
-         FROM cards JOIN users ON cards.owner = users.id`,
+      // eslint-disable-next-line quotes
+        `SELECT cards.*,
+          users.name AS user_name,
+          users.avatar AS user_avatar,
+          users.about AS user_about,
+            IFNULL((SELECT CONCAT('[', 
+              GROUP_CONCAT(
+                  CONCAT('{',
+                         '"user_id":', likes.user_id,
+                         ',"name":"', REPLACE(users.name, '"', '\\"'),
+                         '","avatar":"', REPLACE(users.avatar, '"', '\\"'),
+                         '","about":"', REPLACE(users.about, '"', '\\"'),
+                         '"}'
+                        )
+                  SEPARATOR ','
+              ),
+       ']')
+         FROM likes
+         JOIN users ON likes.user_id = users.id
+         WHERE likes.card_id = cards.id
+        ), '[]') AS likes
+          FROM cards 
+          LEFT JOIN users ON cards.owner = users.id
+          LEFT JOIN (
+          SELECT likes.card_id, likes.user_id
+          FROM likes
+          JOIN users ON likes.user_id = users.id
+          ) AS likes ON cards.id = likes.card_id
+          GROUP BY cards.id, users.name, users.avatar, users.about
+          ORDER BY createdAt DESC
+          ;`,
       );
       conn.release();
       return cards;
@@ -81,6 +96,7 @@ const getCard = (req, res, next) => {
           name: card.name,
           createdAt: card.createdAt,
           link: card.link,
+          likes: JSON.parse(card.likes),
           owner: {
             id: card.owner,
             name: card.user_name,
@@ -100,17 +116,44 @@ const getCardId = (req, res, next) => {
     .then((conn) => {
       const card = conn.query(
         // eslint-disable-next-line quotes
+        // `SELECT cards.*,
+        //   users.name AS user_name,
+        //   users.avatar AS user_avatar,
+        //   users.about AS user_about
+        //   FROM cards JOIN users ON cards.owner = users.id WHERE cards.id = ?;`,
         `SELECT cards.*,
           users.name AS user_name,
           users.avatar AS user_avatar,
-          users.about AS user_about
-          FROM cards JOIN users ON cards.owner = users.id WHERE cards.id = ?;`,
+          users.about AS user_about,
+            IFNULL((SELECT CONCAT('[', 
+              GROUP_CONCAT(
+                  CONCAT('{',
+                         '"user_id":', likes.user_id,
+                         ',"name":"', REPLACE(users.name, '"', '\\"'),
+                         '","avatar":"', REPLACE(users.avatar, '"', '\\"'),
+                         '","about":"', REPLACE(users.about, '"', '\\"'),
+                         '"}'
+                        )
+                  SEPARATOR ','
+              ),
+       ']')
+         FROM likes
+         JOIN users ON likes.user_id = users.id
+         WHERE likes.card_id = cards.id
+        ), '[]') AS likes
+          FROM cards
+          LEFT JOIN users ON cards.owner = users.id
+          LEFT JOIN likes ON cards.id = likes.card_id
+          WHERE cards.id = ?
+          GROUP BY cards.id, users.name, users.avatar, users.about;
+          `,
         [req.params.id],
       );
       conn.release();
       return card;
     })
     .then((card) => {
+      console.log(card[0]);
       if (!card[0].length) {
         throw new NotFoundError('Карточка по указанному id не найдена в базе данных');
       } else {
@@ -125,6 +168,7 @@ const getCardId = (req, res, next) => {
             avatar: card[0][0].user_avatar,
             about: card[0][0].user_about,
           },
+          likes: JSON.parse(card[0][0].likes),
         });
       }
     })
@@ -135,35 +179,11 @@ const getCardId = (req, res, next) => {
     .catch(next);
 };
 
-// const deleteCard = (req, res, next) => {
-//   Card.findById(req.params.cardId)
-//     .then((card) => {
-//       if (!card) {
-//         throw new NotFoundError('Карточка с указанным id не найдена');
-//       }
-//       if (card.owner.toString() === req.user._id) {
-//         return Card.findByIdAndDelete(req.params.cardId)
-//           .then(() => {
-//             res.status(200).send({ message: 'Карточка успешно удалена' });
-//           });
-//       }
-//       throw new ForbiddenError('Невозможно удалить карточку другого пользователя');
-//     })
-//     .catch((err) => {
-//       if (err.name === 'CastError') {
-//         throw new BadRequestError('Некорректно указан id карточки');
-//       }
-//       next(err);
-//     })
-//     .catch(next);
-// };
-
 const deleteCard = (req, res, next) => {
   pool.getConnection()
     .then((conn) => {
       const card = conn.query(
-        // eslint-disable-next-line quotes
-        `SELECT id, owner FROM cards WHERE cards.id = ?;`,
+        'SELECT id, owner FROM cards WHERE cards.id = ?;',
         [req.params.cardId],
       );
       conn.release();
@@ -197,31 +217,180 @@ const deleteCard = (req, res, next) => {
 };
 
 const likeCard = (req, res, next) => {
-  Card.findByIdAndUpdate(req.params.cardId, { $addToSet: { likes: req.user._id } }, { new: true })
-    .then((card) => {
-      if (!card) {
-        throw new NotFoundError('Передан несуществующий _id карточки');
-      } else {
-        res.send({ data: card });
-      }
+  pool.getConnection()
+    .then((conn) => {
+      const card = conn.query(
+        'SELECT id, owner FROM cards WHERE cards.id = ?;',
+        [req.params.cardId],
+      );
+      conn.release();
+      return card;
     })
-    .catch((err) => {
-      if (err.name === 'CastError') {
-        throw new BadRequestError('Переданы некорректные данные для постановки лайка');
+    .then((result) => {
+      if (!result[0].length) {
+        throw new NotFoundError('Карточка с указанным id не найдена');
       }
+      pool.getConnection()
+        .then((conn) => {
+          const card = conn.query(
+            'SELECT COUNT(*) AS like_count FROM likes WHERE user_id = ? AND card_id = ?;',
+            [req.user.userId, req.params.cardId],
+          );
+          conn.release();
+          return card;
+        })
+        .then((card) => {
+          if (!card[0][0].like_count) {
+            return pool.getConnection()
+              .then((conn) => {
+                const addLike = conn.query(
+                  'INSERT INTO likes (card_id, user_id) VALUES (?,?);',
+                  [req.params.cardId, req.user.userId],
+                );
+                conn.release();
+                return addLike;
+              })
+              .then(() => {
+                pool.getConnection()
+                  .then((conn) => {
+                    const updateCard = conn.query(
+                    // eslint-disable-next-line quotes
+                      `SELECT cards.*,
+          users.name AS user_name,
+          users.avatar AS user_avatar,
+          users.about AS user_about,
+            IFNULL((SELECT CONCAT('[', 
+              GROUP_CONCAT(
+                  CONCAT('{',
+                         '"user_id":', likes.user_id,
+                         ',"name":"', REPLACE(users.name, '"', '\\"'),
+                         '","avatar":"', REPLACE(users.avatar, '"', '\\"'),
+                         '","about":"', REPLACE(users.about, '"', '\\"'),
+                         '"}'
+                        )
+                  SEPARATOR ','
+              ),
+       ']')
+         FROM likes
+         JOIN users ON likes.user_id = users.id
+         WHERE likes.card_id = cards.id
+        ), '[]') AS likes
+          FROM cards
+          LEFT JOIN users ON cards.owner = users.id
+          LEFT JOIN likes ON cards.id = likes.card_id
+          WHERE cards.id = ?
+          GROUP BY cards.id, users.name, users.avatar, users.about;
+          `,
+                      [req.params.cardId],
+                    );
+                    conn.release();
+                    return updateCard;
+                  })
+                  .then((newcard) => {
+                    console.log(newcard);
+                    return res.json({
+                      id: newcard[0][0].id,
+                      name: newcard[0][0].name,
+                      link: newcard[0][0].link,
+                      createdAt: newcard[0][0].createdAt,
+                      owner: {
+                        id: newcard[0][0].owner,
+                        name: newcard[0][0].user_name,
+                        avatar: newcard[0][0].user_avatar,
+                        about: newcard[0][0].user_about,
+                      },
+                      likes: JSON.parse(newcard[0][0].likes),
+                    });
+                  });
+              });
+          }
+          throw new ForbiddenError('Вы уже ставили лайк');
+        })
+        .catch((err) => next(err));
+    })
+
+    .catch((err) => {
       next(err);
     })
     .catch(next);
 };
 
 const dislikeCard = (req, res, next) => {
-  Card.findByIdAndUpdate(req.params.cardId, { $pull: { likes: req.user._id } }, { new: true })
-    .then((card) => {
-      if (!card) {
-        throw new NotFoundError('Передан несуществующий _id карточки');
-      } else {
-        res.send({ data: card });
+  pool.getConnection()
+    .then((conn) => {
+      const like = conn.query(
+        'SELECT * FROM likes WHERE card_id = ? AND user_id = ?;',
+        [req.params.cardId, req.user.userId],
+      );
+      conn.release();
+      return like;
+    })
+    .then((result) => {
+      if (!result[0].length) {
+        throw new NotFoundError('Переданы некорректные данные для снятия лайка');
       }
+      pool.getConnection()
+        .then((conn) => {
+          const card = conn.query(
+            'DELETE FROM likes WHERE card_id = ? AND user_id = ?;',
+            [req.params.cardId, req.user.userId],
+          );
+          conn.release();
+          return card;
+        })
+        .then(() => {
+          pool.getConnection()
+            .then((conn) => {
+              const updateCard = conn.query(
+                // eslint-disable-next-line quotes
+                `SELECT cards.*,
+          users.name AS user_name,
+          users.avatar AS user_avatar,
+          users.about AS user_about,
+            IFNULL((SELECT CONCAT('[', 
+              GROUP_CONCAT(
+                  CONCAT('{',
+                         '"user_id":', likes.user_id,
+                         ',"name":"', REPLACE(users.name, '"', '\\"'),
+                         '","avatar":"', REPLACE(users.avatar, '"', '\\"'),
+                         '","about":"', REPLACE(users.about, '"', '\\"'),
+                         '"}'
+                        )
+                  SEPARATOR ','
+              ),
+       ']')
+         FROM likes
+         JOIN users ON likes.user_id = users.id
+         WHERE likes.card_id = cards.id
+        ), '[]') AS likes
+          FROM cards
+          LEFT JOIN users ON cards.owner = users.id
+          LEFT JOIN likes ON cards.id = likes.card_id
+          WHERE cards.id = ?
+          GROUP BY cards.id, users.name, users.avatar, users.about;
+          `,
+                [req.params.cardId],
+              );
+              conn.release();
+              return updateCard;
+            })
+            .then((newcard) => {
+              console.log(newcard);
+              return res.json({
+                id: newcard[0][0].id,
+                name: newcard[0][0].name,
+                link: newcard[0][0].link,
+                createdAt: newcard[0][0].createdAt,
+                owner: {
+                  id: newcard[0][0].owner,
+                  name: newcard[0][0].user_name,
+                  avatar: newcard[0][0].user_avatar,
+                  about: newcard[0][0].user_about,
+                },
+                likes: JSON.parse(newcard[0][0].likes),
+              });
+            });
+        });
     })
     .catch((err) => {
       if (err.name === 'CastError') {
