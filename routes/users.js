@@ -1,12 +1,9 @@
 const usersrouter = require('express').Router();
-
 const { celebrate, Joi } = require('celebrate');
-
-const {
-  getUser, getUserId, patchUserProfile, patchUserAvatar, getUserInfo,
-} = require('../controllers/users');
-
-usersrouter.get('/', getUser);
+const getUserInfo = require('../controllers/users/getUserInfo');
+const getUserId = require('../controllers/users/getUserId');
+const patchUserProfile = require('../controllers/users/patchUserProfile');
+const patchUserAvatar = require('../controllers/users/patchUserAvatar');
 
 usersrouter.get('/me', getUserInfo);
 
