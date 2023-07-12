@@ -1,4 +1,5 @@
 const express = require('express');
+require('dotenv').config();
 const bodyParser = require('body-parser');
 const { errors, celebrate, Joi } = require('celebrate');
 const usersrouter = require('./routes/users');
