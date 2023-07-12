@@ -1,10 +1,10 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const { errors, celebrate, Joi } = require('celebrate');
 const usersrouter = require('./routes/users');
 const cardsrouter = require('./routes/cards');
-const { login, createUser } = require('./controllers/users');
+const createUser = require('./controllers/users/createUser');
+const login = require('./controllers/users/login');
 const { auth } = require('./middlewares/auth');
 const NotFoundError = require('./errors/NotFoundError');
 const { cors } = require('./middlewares/cors');
@@ -43,8 +43,6 @@ app.use('/cards', cardsrouter);
 app.use((req, res, next) => {
   next(new NotFoundError('Страница не найдена'));
 });
-
-mongoose.connect('mongodb://localhost:27017/mestodb');
 
 app.use(errors());
 
