@@ -1,8 +1,6 @@
-const allowedCors = [
-  'https://film.nomoredomains.xyz',
-  'http://film.nomoredomains.xyz',
-  'http://localhost:5173',
-];
+const { ALLOWED_CORS } = require('../utils/variables');
+
+const allowedCors = ALLOWED_CORS;
 
 const cors = ((req, res, next) => {
   const { origin } = req.headers;

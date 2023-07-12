@@ -35,7 +35,7 @@ const getCard = async (_req, res, next) => {
           ) AS likes ON cards.id = likes.card_id
           GROUP BY cards.id, users.name, users.avatar, users.about
           ORDER BY createdAt DESC
-          ;`,
+          LIMIT 30;`,
     );
     conn.release();
 
